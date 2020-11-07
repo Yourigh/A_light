@@ -414,7 +414,7 @@ void launchWeb(int webtype) {
   }
   PRINTDEBUG(ip);
   
-  delay(10);
+  delay(100);
   if (!mdns.begin("Alight",ip)) {
     PRINTDEBUG("\nError setting up MDNS responder! deadlock, restarting");
     LED_blink_all(leds,20,CRGB::Red);
