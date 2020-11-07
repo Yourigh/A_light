@@ -1,0 +1,20 @@
+{
+    "name": "espsynth86",
+    "description": "Synthesizer Library",
+    "keywords": "ESP8266, ESP32, Synth, Synthesizer",
+    "authors": [
+        {
+            "name": "Esptiny86",
+            "email": "iyok@deadmediafm.org",
+            "url": "http://github.com/esptiny86/espsynth86",
+            "maintainer": true
+        }
+    ],
+    "repository": {
+        "type": "git",
+         "url": "https://github.com/esptiny86/espsynth86.git"
+    },
+    "version": "0.0.1",
+    "frameworks": "arduino",
+    "platforms": "*"
+}

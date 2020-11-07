@@ -1,0 +1,18 @@
+/restart
+/a?update=	http_update_handle(req);
+/cleareeprom - clears wifi login and alarms
+/time - not implemented - getting time from time server, value returned to debug serial link only
+/?SYN - writes time to device sent from http
+	Example: SYN,08+20+2016,09:28:56,1 - last number is day in the week starting Sunday = 1
+/?ADD - adds alarm
+	//Example:  /?ADD,2,A,0951,O,0,a      
+		?ADD,1,A,0825,234,0,name; HTTP/1.1  //234 means monday tuesday and wednesday repetition
+/?DEL - deletes alarm
+	//Example: /?DEL,2 HTTP/1.1
+/?SET - sets general parameters of a device like name
+	//Example: /?SET,5,Name+SecondWord
+/?DEB - for debuggiing, not implemented
+/a?ssid= - writing SSID and PASS to network
+	
+	
+	all in DEV_notes excel
