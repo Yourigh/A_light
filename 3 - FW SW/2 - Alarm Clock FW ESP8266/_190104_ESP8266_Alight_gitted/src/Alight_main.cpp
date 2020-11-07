@@ -57,6 +57,9 @@ const char* mqttServer = "192.168.1.12";
 const int mqttPort = 1883;
 const char* mqttUser = "homeassistant";
 const char* mqttPassword = "quoh2CheiWah1akire8ehee0Pegik0Shietu7rePhojaetoh1shephaegeiPheaz";
+// payloads by default (on/off)
+const char* LIGHT_ON = "ON";
+const char* LIGHT_OFF = "OFF";
 
 bool summer_mode = false;
 
@@ -221,21 +224,33 @@ void setup() {
     client.setServer(mqttServer, mqttPort);
     client.setCallback(MQTTcallback);
     uint8_t mqtt_connectcount = 0;
+    String MQTTname = "A-light-"+ chip_id;
+    char MQTTnamechar[20] = "a";
+    ("A-light-"+ chip_id).toCharArray(MQTTnamechar,20);
     while (!client.connected()) {
-      Serial.println("\nConnecting to MQTT...");
-      String MQTTname = "A-light-"+ chip_id;
-      char MQTTnamechar[20] = "a";
-      ("A-light-"+ chip_id).toCharArray(MQTTnamechar,20);
+      PRINTDEBUG("\nConnecting to MQTT...");
       if (client.connect(MQTTnamechar, mqttUser, mqttPassword )) {
-        Serial.println("connected"); 
+        PRINTDEBUG("connected"); 
       } else {
         mqtt_connectcount++;
-        Serial.print("failed with state ");
-        Serial.print(client.state());
+        PRINTDEBUG("\nfailed with state ");
+        PRINTDEBUG(client.state());
         delay(100);
         if (mqtt_connectcount == 10) break;
       }
     }
+    
+    char PublishTopics[40] = "a";
+    char SubscribeTopics[40] = "a";
+    sprintf(PublishTopics,"%s/light%i/state",MQTTname.c_str(),1);
+    PRINTDEBUG("\nPublishing: ");
+    PRINTDEBUG(PublishTopics);
+    client.publish(PublishTopics, LIGHT_OFF, true);
+    sprintf(SubscribeTopics,"%s/light%i/set",MQTTname.c_str(),1);
+    PRINTDEBUG("\nSubscribing: ");
+    PRINTDEBUG(SubscribeTopics);
+    client.subscribe(SubscribeTopics);
+    PRINTDEBUG("\n");
   }
   
   int b = 20;
@@ -446,7 +461,7 @@ void launchWeb(int webtype) {
   }
   PRINTDEBUG(ip);
   
-  delay(10);
+  delay(100);
   if (!mdns.begin("Alight",ip)) {
     PRINTDEBUG("\nError setting up MDNS responder! deadlock, restarting");
     LED_blink_all(leds,20,CRGB::Red);
@@ -1035,16 +1050,14 @@ byte getOrientation(void)
 
 void MQTTcallback(char* topic, byte* payload, unsigned int length) {
  
-  Serial.print("Message arrived in topic: ");
-  Serial.println(topic);
+  PRINTDEBUG("\nMessage arrived in topic: ");
+  PRINTDEBUG(topic);
  
-  Serial.print("Message:");
+  PRINTDEBUG("\nMessage:");
   for (int i = 0; i < length; i++) {
-    Serial.print((char)payload[i]);
+    PRINTDEBUG((char)payload[i]);
   }
- 
-  Serial.println();
-  Serial.println("-----------------------");
+
  
 }
 
