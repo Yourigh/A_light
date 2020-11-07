@@ -22,10 +22,12 @@
 #include <SparkFun_MMA8452Q.h> // Includes the SFE_MMA8452Q library
 #include "i2s.h"
 #include "i2s_reg.h"
+#include <PubSubClient.h> //https://iotdesignpro.com/projects/how-to-connect-esp8266-with-mqtt
 
-#define VERSION "V1.1"
+#define VERSION "V1.2"
 //V1.0 200205 added more delays to ext trigger
 //V1.1 added clock show yellow while in alarm shine mode
+//V1.2 adding MQTT
 
 
 // Define the array of leds
@@ -48,6 +50,14 @@ String req_value_buf[req_buffer_size];
 String req_name_buf[req_buffer_size];
 
 WiFiServer server(80);
+
+WiFiClient espClient;
+PubSubClient client(espClient);
+const char* mqttServer = "192.168.1.12";
+const int mqttPort = 1883;
+const char* mqttUser = "homeassistant";
+const char* mqttPassword = "quoh2CheiWah1akire8ehee0Pegik0Shietu7rePhojaetoh1shephaegeiPheaz";
+
 bool summer_mode = false;
 
 TimeElements tm;
@@ -94,6 +104,7 @@ byte clock_face_rotation = 0;
 #endif
 bool check_alarm();
 void delete_alarm(byte Alarm_ID);
+void MQTTcallback(char* topic, byte* payload, unsigned int length);
 
 void setup() {
   if (WiFi.status() == WL_CONNECTED)  WiFi.disconnect();
@@ -205,6 +216,24 @@ void setup() {
   }
 
   launchWeb(webtype); //0 local, 1 AP
+
+  if(webtype == 0){
+    client.setServer(mqttServer, mqttPort);
+    client.setCallback(MQTTcallback);
+    uint8_t mqtt_connectcount = 0;
+    while (!client.connected()) {
+      Serial.println("\nConnecting to MQTT...");
+      if (client.connect("A-light", mqttUser, mqttPassword )) {
+        Serial.println("connected"); 
+      } else {
+        mqtt_connectcount++;
+        Serial.print("failed with state ");
+        Serial.print(client.state());
+        delay(100);
+        if (mqtt_connectcount == 20) break;
+      }
+    }
+  }
   
   int b = 20;
   while (b == 20) {
@@ -999,6 +1028,21 @@ byte getOrientation(void)
     break;
   }
   return 0;
+}
+
+void MQTTcallback(char* topic, byte* payload, unsigned int length) {
+ 
+  Serial.print("Message arrived in topic: ");
+  Serial.println(topic);
+ 
+  Serial.print("Message:");
+  for (int i = 0; i < length; i++) {
+    Serial.print((char)payload[i]);
+  }
+ 
+  Serial.println();
+  Serial.println("-----------------------");
+ 
 }
 
 ////////////////////////////////////////////////////
