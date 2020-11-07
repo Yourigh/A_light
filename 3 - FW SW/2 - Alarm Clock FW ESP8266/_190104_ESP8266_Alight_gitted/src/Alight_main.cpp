@@ -223,14 +223,17 @@ void setup() {
     uint8_t mqtt_connectcount = 0;
     while (!client.connected()) {
       Serial.println("\nConnecting to MQTT...");
-      if (client.connect("A-light", mqttUser, mqttPassword )) {
+      String MQTTname = "A-light-"+ chip_id;
+      char MQTTnamechar[20] = "a";
+      ("A-light-"+ chip_id).toCharArray(MQTTnamechar,20);
+      if (client.connect(MQTTnamechar, mqttUser, mqttPassword )) {
         Serial.println("connected"); 
       } else {
         mqtt_connectcount++;
         Serial.print("failed with state ");
         Serial.print(client.state());
         delay(100);
-        if (mqtt_connectcount == 20) break;
+        if (mqtt_connectcount == 10) break;
       }
     }
   }
