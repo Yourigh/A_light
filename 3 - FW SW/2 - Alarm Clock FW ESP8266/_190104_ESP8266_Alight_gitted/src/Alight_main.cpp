@@ -918,9 +918,10 @@ time_t RTC_time_read(){
   #endif
 
   time_t tRTC = makeTime(tm);
-  if (tRTC < 1512330480) //rudimentary check if time is correct, not older than this code
+  if (tRTC < 1608661255) //rudimentary check if time is correct, not older than this code
     {return 0;
-    PRINTDEBUG("\nRTC Time not valid!");}
+    PRINTDEBUG("\nRTC Time not valid!");
+    return 0;}
   else
     return tRTC;
 }
