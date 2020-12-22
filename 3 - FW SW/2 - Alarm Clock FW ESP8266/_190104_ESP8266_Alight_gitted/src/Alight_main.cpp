@@ -140,7 +140,7 @@ void setup() {
   #endif
   #ifdef NTP_TIME
     setSyncProvider(NTP_time_read);
-    setSyncInterval(300);//seconds
+    setSyncInterval(5);//seconds
   #endif
 
   //Enable EEPROM
@@ -205,11 +205,13 @@ void setup() {
   }
 
   //read EEPROM summertime settings
+  
   if (EEPROM.read(SUMMERTIME_MEMORY_OFFSET))
     timeClient.setTimeOffset(7200);
   else
     timeClient.setTimeOffset(3600);
   
+
   byte webtype = 0; //0 local, 1 AP
   String WifiList;
   if ((esid.length() > 2)) {
@@ -274,6 +276,9 @@ void setup() {
       
       br = 0;
       if (millis()-last_update_time>1000){//every second
+        if (timeStatus()!=timeSet) //begins with 5 second interval to set the time quickly, but to keep track, 300s interval is ok. 300s is set in NTP_time_read.
+          {setSyncInterval(5); setTime(NTP_time_read());}
+        
          PRINTDEBUG(".");
          check_alarm(); //check alarm every second only
          last_update_time = millis();
@@ -419,13 +424,18 @@ void check_reset_button(){
 }
 
 void program_restart(){
+  
   Alarm_shining = false;
   br = 0; //alarm brightness begin
   for (int i=0;i<40;i++)
     Alarm_buffer[i] = 0;
   String chip_id = String(ESP.getFlashChipId());
   if (WiFi.status() == WL_CONNECTED)  WiFi.disconnect();
+  PRINTDEBUG("\nTrying ESP.restart..");
+  ESP.restart(); //CHECK if it is all ok
+  PRINTDEBUG("\nAfter ESP.restart..");
   delay(100);
+  PRINTDEBUG("\nExecuting setup...");
   setup();
 }
 
@@ -727,6 +737,7 @@ int mdns1(int webtype, String WifiList) //main web function that do everything. 
     }
     else if ( req.startsWith("/summertime_on") ) {
       timeClient.setTimeOffset(7200);
+      setSyncInterval(5); 
       EEPROM.write(SUMMERTIME_MEMORY_OFFSET, 0b1);
       EEPROM.commit();
       s = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n<!DOCTYPE HTML>\r\n<html>UTC+2 selected<br>";
@@ -737,6 +748,7 @@ int mdns1(int webtype, String WifiList) //main web function that do everything. 
     }
     else if ( req.startsWith("/summertime_off") ) {
       timeClient.setTimeOffset(3600);
+      setSyncInterval(5); 
       EEPROM.write(SUMMERTIME_MEMORY_OFFSET, 0b0);
       EEPROM.commit();
       s = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n<!DOCTYPE HTML>\r\n<html>UTC+1 selected<br>";
@@ -959,6 +971,7 @@ time_t NTP_time_read(){
       return 0;
     }
   else
+    setSyncInterval(300); 
     return tRTC;
 }
 #endif
