@@ -65,7 +65,7 @@ unsigned long last_update_time;
   RtcDS1307<TwoWire> Rtc(Wire);
 #endif
 #ifdef NTP_TIME
-  const long utcOffsetInSeconds = 0;//19800;
+  const long utcOffsetInSeconds = 3600;//19800;
   // Define NTP Client to get time
   WiFiUDP ntpUDP;
   NTPClient timeClient(ntpUDP, "pool.ntp.org", utcOffsetInSeconds);
@@ -215,6 +215,7 @@ void setup() {
       webtype = 0; //0 local, 1 AP
       #ifdef NTP_TIME
         timeClient.begin();
+        timeClient.update();
       #endif
     } else {
       WifiList = scanWifi_list();
@@ -666,8 +667,9 @@ int mdns1(int webtype, String WifiList) //main web function that do everything. 
   else //web type 0 is when connected to local wifi
   {
     if (req == "/")
-    {
-      s = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n<!DOCTYPE HTML>\r\n<html>ALight active<br>";
+    {     
+      s = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n<!DOCTYPE HTML>\r\n<html>A-Light active<br><a href=\"";
+      s += "wifioff\">Summer mode (no WiFi untul restart)</a><br>";
       s += "<p>";
       s += "</html>\r\n\r\n";
       PRINTDEBUG("\nSending 200");
@@ -918,13 +920,16 @@ int mdns1(int webtype, String WifiList) //main web function that do everything. 
 
 #ifdef NTP_TIME
 time_t NTP_time_read(){
+  timeClient.update();
   time_t tRTC = (time_t)timeClient.getEpochTime();
   PRINTDEBUG("\nNTC Time read:");
-  PRINTDEBUG(timeClient.getEpochTime());
+  PRINTDEBUG(tRTC);
 
   if (tRTC < 1608659817) //rudimentary check if time is correct, not older than this code
     {
-    PRINTDEBUG("\nNTC Time not valid!");return 0;}
+      PRINTDEBUG("\nNTC Time not valid!");
+      return 0;
+    }
   else
     return tRTC;
 }
