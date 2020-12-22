@@ -10,7 +10,9 @@
 #define FASTLED_ALLOW_INTERRUPTS 0 //to avoid flickering
 #include "FastLED.h"
 //#define RTC_DS3231
-#define RTC_DS1307
+//#define RTC_DS1307
+#define NTP_TIME
+
 #ifdef RTC_DS3231
   #include <DS3231.h>
 #endif
@@ -22,11 +24,15 @@
 #include <SparkFun_MMA8452Q.h> // Includes the SFE_MMA8452Q library
 #include "i2s.h"
 #include "i2s_reg.h"
+#ifdef NTP_TIME
+  #include "NTPClient.h"
+  #include "WiFiUdp.h"
+#endif
 
-#define VERSION "V1.1"
+#define VERSION "V1.2"
 //V1.0 200205 added more delays to ext trigger
 //V1.1 added clock show yellow while in alarm shine mode
-
+//V1.2 added internet time NTP client, added summer time commands and menu on default webpage
 
 // Define the array of leds
 CRGB leds[NUM_LEDS_M + NUM_LEDS_H + SACRIFICIAL_LED];
@@ -58,6 +64,12 @@ unsigned long last_update_time;
 #ifdef RTC_DS1307
   RtcDS1307<TwoWire> Rtc(Wire);
 #endif
+#ifdef NTP_TIME
+  const long utcOffsetInSeconds = 3600;//19800;
+  // Define NTP Client to get time
+  WiFiUDP ntpUDP;
+  NTPClient timeClient(ntpUDP, "pool.ntp.org", utcOffsetInSeconds);
+#endif
 
 bool h12=false;
 bool PM;
@@ -67,6 +79,7 @@ bool Century=false;
 #define ALARM_STEP_BRIGHTNESS_MS 1000
 byte Alarm_buffer[40]; //4 items per alarm, 10 alarms available
 #define ALARM_MEMORY_OFFSET 256
+#define SUMMERTIME_MEMORY_OFFSET 300
 bool Alarm_shining = false;
 #define ALARM_TIMEOUT_MS 3600000 // from start of alarm, one hour, has to be more than 60s
 unsigned long alarm_timeout_from_ms = 0;
@@ -92,6 +105,10 @@ byte clock_face_rotation = 0;
 #if defined(RTC_DS1307) || defined(RTC_DS3231)
   time_t RTC_time_read();
 #endif
+#ifdef NTP_TIME
+  time_t NTP_time_read();
+#endif
+
 bool check_alarm();
 void delete_alarm(byte Alarm_ID);
 
@@ -120,6 +137,10 @@ void setup() {
   #if defined(RTC_DS1307) || defined(RTC_DS3231)
     setSyncProvider(RTC_time_read);
     setSyncInterval(30);//seconds
+  #endif
+  #ifdef NTP_TIME
+    setSyncProvider(NTP_time_read);
+    setSyncInterval(5);//seconds
   #endif
 
   //Enable EEPROM
@@ -183,6 +204,14 @@ void setup() {
     #endif
   }
 
+  //read EEPROM summertime settings
+  
+  if (EEPROM.read(SUMMERTIME_MEMORY_OFFSET))
+    timeClient.setTimeOffset(7200);
+  else
+    timeClient.setTimeOffset(3600);
+  
+
   byte webtype = 0; //0 local, 1 AP
   String WifiList;
   if ((esid.length() > 2)) {
@@ -193,6 +222,10 @@ void setup() {
     if (testWifi(leds) == 20) { //20 connected, 10 not connected     this takes about ten seconds
       WiFi.mode(WIFI_STA);
       webtype = 0; //0 local, 1 AP
+      #ifdef NTP_TIME
+        timeClient.begin();
+        timeClient.update();
+      #endif
     } else {
       WifiList = scanWifi_list();
       setupAP(chip_id);
@@ -243,6 +276,9 @@ void setup() {
       
       br = 0;
       if (millis()-last_update_time>1000){//every second
+        if (timeStatus()!=timeSet) //begins with 5 second interval to set the time quickly, but to keep track, 300s interval is ok. 300s is set in NTP_time_read.
+          {setSyncInterval(5); setTime(NTP_time_read());}
+        
          PRINTDEBUG(".");
          check_alarm(); //check alarm every second only
          last_update_time = millis();
@@ -388,13 +424,18 @@ void check_reset_button(){
 }
 
 void program_restart(){
+  
   Alarm_shining = false;
   br = 0; //alarm brightness begin
   for (int i=0;i<40;i++)
     Alarm_buffer[i] = 0;
   String chip_id = String(ESP.getFlashChipId());
   if (WiFi.status() == WL_CONNECTED)  WiFi.disconnect();
+  PRINTDEBUG("\nTrying ESP.restart..");
+  ESP.restart(); //CHECK if it is all ok
+  PRINTDEBUG("\nAfter ESP.restart..");
   delay(100);
+  PRINTDEBUG("\nExecuting setup...");
   setup();
 }
 
@@ -643,8 +684,13 @@ int mdns1(int webtype, String WifiList) //main web function that do everything. 
   else //web type 0 is when connected to local wifi
   {
     if (req == "/")
-    {
-      s = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n<!DOCTYPE HTML>\r\n<html>ALight active<br>";
+    {     
+      s = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n<!DOCTYPE HTML>\r\n<html>A-Light active<br><a href=\"";
+      s += "summertime_on\">Turn on summer time (UTC+2)</a><br><a href=\"";
+      s += "summertime_off\">Turn off summer time (UTC+1)</a><br><a href=\"";
+      s += "restart\">Device restart</a><br><a href=\"";
+      s += "wifioff\">Summer mode (no WiFi untul restart)</a><br><a href=\"";
+      s += "cleareeprom\">Clear eeprom - remove all settings!</a><br>";
       s += "<p>";
       s += "</html>\r\n\r\n";
       PRINTDEBUG("\nSending 200");
@@ -689,9 +735,26 @@ int mdns1(int webtype, String WifiList) //main web function that do everything. 
       LED_blink_all(leds,1,CRGB::Green);
       summer_mode=true;
     }
-    else if ( req.startsWith("/time") ) {
-      // getting time from time server, value returned to debug serial link only yet
-      //gettime();
+    else if ( req.startsWith("/summertime_on") ) {
+      timeClient.setTimeOffset(7200);
+      setSyncInterval(5); 
+      EEPROM.write(SUMMERTIME_MEMORY_OFFSET, 0b1);
+      EEPROM.commit();
+      s = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n<!DOCTYPE HTML>\r\n<html>UTC+2 selected<br>";
+      s += "<p>";
+      s += "</html>\r\n\r\n";
+      PRINTDEBUG("\nSending 200");
+      LED_blink_all(leds,1,CRGB::Purple);
+    }
+    else if ( req.startsWith("/summertime_off") ) {
+      timeClient.setTimeOffset(3600);
+      setSyncInterval(5); 
+      EEPROM.write(SUMMERTIME_MEMORY_OFFSET, 0b0);
+      EEPROM.commit();
+      s = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n<!DOCTYPE HTML>\r\n<html>UTC+1 selected<br>";
+      s += "<p>";
+      s += "</html>\r\n\r\n";
+      PRINTDEBUG("\nSending 200");
       LED_blink_all(leds,1,CRGB::Purple);
     }
     else if ( req.startsWith("/a?update=") ) {
@@ -893,6 +956,25 @@ int mdns1(int webtype, String WifiList) //main web function that do everything. 
   return OK_VAL;
 }
 
+#ifdef NTP_TIME
+time_t NTP_time_read(){
+  timeClient.update();
+  time_t tRTC = (time_t)timeClient.getEpochTime();
+  #if DEBUG == 1
+    PRINTDEBUG("\nNTC Time read:");
+    PRINTDEBUG(tRTC);
+  #endif
+
+  if (tRTC < 1608659817) //rudimentary check if time is correct, not older than this code
+    {
+      PRINTDEBUG("\nNTC Time not valid!");
+      return 0;
+    }
+  else
+    setSyncInterval(300); 
+    return tRTC;
+}
+#endif
 
 time_t RTC_time_read(){
   //PRINTDEBUG("RTC read\n");
