@@ -32,7 +32,7 @@
 #define VERSION "V1.2"
 //V1.0 200205 added more delays to ext trigger
 //V1.1 added clock show yellow while in alarm shine mode
-//V1.2 added internet time NTP client
+//V1.2 added internet time NTP client, added summer time commands and menu on default webpage
 
 // Define the array of leds
 CRGB leds[NUM_LEDS_M + NUM_LEDS_H + SACRIFICIAL_LED];
@@ -79,6 +79,7 @@ bool Century=false;
 #define ALARM_STEP_BRIGHTNESS_MS 1000
 byte Alarm_buffer[40]; //4 items per alarm, 10 alarms available
 #define ALARM_MEMORY_OFFSET 256
+#define SUMMERTIME_MEMORY_OFFSET 300
 bool Alarm_shining = false;
 #define ALARM_TIMEOUT_MS 3600000 // from start of alarm, one hour, has to be more than 60s
 unsigned long alarm_timeout_from_ms = 0;
@@ -139,7 +140,7 @@ void setup() {
   #endif
   #ifdef NTP_TIME
     setSyncProvider(NTP_time_read);
-    setSyncInterval(10);//seconds
+    setSyncInterval(300);//seconds
   #endif
 
   //Enable EEPROM
@@ -203,6 +204,12 @@ void setup() {
     #endif
   }
 
+  //read EEPROM summertime settings
+  if (EEPROM.read(SUMMERTIME_MEMORY_OFFSET))
+    timeClient.setTimeOffset(7200);
+  else
+    timeClient.setTimeOffset(3600);
+  
   byte webtype = 0; //0 local, 1 AP
   String WifiList;
   if ((esid.length() > 2)) {
@@ -669,7 +676,11 @@ int mdns1(int webtype, String WifiList) //main web function that do everything. 
     if (req == "/")
     {     
       s = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n<!DOCTYPE HTML>\r\n<html>A-Light active<br><a href=\"";
-      s += "wifioff\">Summer mode (no WiFi untul restart)</a><br>";
+      s += "summertime_on\">Turn on summer time (UTC+2)</a><br><a href=\"";
+      s += "summertime_off\">Turn off summer time (UTC+1)</a><br><a href=\"";
+      s += "restart\">Device restart</a><br><a href=\"";
+      s += "wifioff\">Summer mode (no WiFi untul restart)</a><br><a href=\"";
+      s += "cleareeprom\">Clear eeprom - remove all settings!</a><br>";
       s += "<p>";
       s += "</html>\r\n\r\n";
       PRINTDEBUG("\nSending 200");
@@ -714,9 +725,24 @@ int mdns1(int webtype, String WifiList) //main web function that do everything. 
       LED_blink_all(leds,1,CRGB::Green);
       summer_mode=true;
     }
-    else if ( req.startsWith("/time") ) {
-      // getting time from time server, value returned to debug serial link only yet
-      //gettime();
+    else if ( req.startsWith("/summertime_on") ) {
+      timeClient.setTimeOffset(7200);
+      EEPROM.write(SUMMERTIME_MEMORY_OFFSET, 0b1);
+      EEPROM.commit();
+      s = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n<!DOCTYPE HTML>\r\n<html>UTC+2 selected<br>";
+      s += "<p>";
+      s += "</html>\r\n\r\n";
+      PRINTDEBUG("\nSending 200");
+      LED_blink_all(leds,1,CRGB::Purple);
+    }
+    else if ( req.startsWith("/summertime_off") ) {
+      timeClient.setTimeOffset(3600);
+      EEPROM.write(SUMMERTIME_MEMORY_OFFSET, 0b0);
+      EEPROM.commit();
+      s = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n<!DOCTYPE HTML>\r\n<html>UTC+1 selected<br>";
+      s += "<p>";
+      s += "</html>\r\n\r\n";
+      PRINTDEBUG("\nSending 200");
       LED_blink_all(leds,1,CRGB::Purple);
     }
     else if ( req.startsWith("/a?update=") ) {
@@ -922,8 +948,10 @@ int mdns1(int webtype, String WifiList) //main web function that do everything. 
 time_t NTP_time_read(){
   timeClient.update();
   time_t tRTC = (time_t)timeClient.getEpochTime();
-  PRINTDEBUG("\nNTC Time read:");
-  PRINTDEBUG(tRTC);
+  #if DEBUG == 1
+    PRINTDEBUG("\nNTC Time read:");
+    PRINTDEBUG(tRTC);
+  #endif
 
   if (tRTC < 1608659817) //rudimentary check if time is correct, not older than this code
     {
