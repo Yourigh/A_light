@@ -10,7 +10,9 @@
 #define FASTLED_ALLOW_INTERRUPTS 0 //to avoid flickering
 #include "FastLED.h"
 //#define RTC_DS3231
-#define RTC_DS1307
+//#define RTC_DS1307
+#define NTP_TIME
+
 #ifdef RTC_DS3231
   #include <DS3231.h>
 #endif
@@ -22,11 +24,15 @@
 #include <SparkFun_MMA8452Q.h> // Includes the SFE_MMA8452Q library
 #include "i2s.h"
 #include "i2s_reg.h"
+#ifdef NTP_TIME
+  #include "NTPClient.h"
+  #include "WiFiUdp.h"
+#endif
 
-#define VERSION "V1.1"
+#define VERSION "V1.2"
 //V1.0 200205 added more delays to ext trigger
 //V1.1 added clock show yellow while in alarm shine mode
-
+//V1.2 added internet time NTP client
 
 // Define the array of leds
 CRGB leds[NUM_LEDS_M + NUM_LEDS_H + SACRIFICIAL_LED];
@@ -57,6 +63,12 @@ unsigned long last_update_time;
 #endif
 #ifdef RTC_DS1307
   RtcDS1307<TwoWire> Rtc(Wire);
+#endif
+#ifdef NTP_TIME
+  const long utcOffsetInSeconds = 0;//19800;
+  // Define NTP Client to get time
+  WiFiUDP ntpUDP;
+  NTPClient timeClient(ntpUDP, "pool.ntp.org", utcOffsetInSeconds);
 #endif
 
 bool h12=false;
@@ -92,6 +104,10 @@ byte clock_face_rotation = 0;
 #if defined(RTC_DS1307) || defined(RTC_DS3231)
   time_t RTC_time_read();
 #endif
+#ifdef NTP_TIME
+  time_t NTP_time_read();
+#endif
+
 bool check_alarm();
 void delete_alarm(byte Alarm_ID);
 
@@ -120,6 +136,10 @@ void setup() {
   #if defined(RTC_DS1307) || defined(RTC_DS3231)
     setSyncProvider(RTC_time_read);
     setSyncInterval(30);//seconds
+  #endif
+  #ifdef NTP_TIME
+    setSyncProvider(NTP_time_read);
+    setSyncInterval(10);//seconds
   #endif
 
   //Enable EEPROM
@@ -193,6 +213,9 @@ void setup() {
     if (testWifi(leds) == 20) { //20 connected, 10 not connected     this takes about ten seconds
       WiFi.mode(WIFI_STA);
       webtype = 0; //0 local, 1 AP
+      #ifdef NTP_TIME
+        timeClient.begin();
+      #endif
     } else {
       WifiList = scanWifi_list();
       setupAP(chip_id);
@@ -893,6 +916,19 @@ int mdns1(int webtype, String WifiList) //main web function that do everything. 
   return OK_VAL;
 }
 
+#ifdef NTP_TIME
+time_t NTP_time_read(){
+  time_t tRTC = (time_t)timeClient.getEpochTime();
+  PRINTDEBUG("\nNTC Time read:");
+  PRINTDEBUG(timeClient.getEpochTime());
+
+  if (tRTC < 1608659817) //rudimentary check if time is correct, not older than this code
+    {
+    PRINTDEBUG("\nNTC Time not valid!");return 0;}
+  else
+    return tRTC;
+}
+#endif
 
 time_t RTC_time_read(){
   //PRINTDEBUG("RTC read\n");
