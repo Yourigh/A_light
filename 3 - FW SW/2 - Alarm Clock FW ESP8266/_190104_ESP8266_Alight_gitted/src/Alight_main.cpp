@@ -506,7 +506,8 @@ void http_update_handle(String req) {
   req_inter(req);
   PRINTDEBUG(req_name_buf[0]);
   PRINTDEBUG(req_value_buf[0]);
-  t_httpUpdate_return ret = ESPhttpUpdate.update(req_value_buf[0]);
+  HTTPClient httpClient;
+  t_httpUpdate_return ret = ESPhttpUpdate.update(httpClient, req_value_buf[0]);
   switch (ret) {
     case HTTP_UPDATE_FAILED:
       Serial.printf("HTTP_UPDATE_FAILD Error (%d): %s", ESPhttpUpdate.getLastError(), ESPhttpUpdate.getLastErrorString().c_str());
