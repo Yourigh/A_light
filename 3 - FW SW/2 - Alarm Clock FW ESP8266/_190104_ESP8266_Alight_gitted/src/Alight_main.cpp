@@ -332,23 +332,24 @@ void time_show(byte rot, byte status_led){
   byte second_show = second();
   
   for(byte l=0;l<12;l++){
-    if (hour()<=12) //in the morning example: 4:30AM, leds 1,2,3,4 are ON
-      hour_array[l] = !((hour12h+1)<=l); //true is shine
-    else            //in the afternoon, example: 11:30PM, only led at 11 position is ON
-                    //to limit light intensity in the night
-      hour_array[l] = ((hour12h)==l); //true is shine
+    //example: 11:30PM, only led at 11 position is ON
+    //to limit light intensity in the night
+    hour_array[l] = ((hour12h)==l); //true is shine
       
     if (hour()==12) //comparing 24h time
-      hour_array[0]=true; //all at noon
+      hour_array[0]=true; //12h shine also at noon and midnight
     else
       hour_array[0]=false;
   }
-  for(byte l=0;l<24;l++){
-    minute_array[l] = !((minute_show/2.5)<=l);
-    if (SHOW_SECONDS)
-      second_array[l] = !((second_show/2.5)<=l);
+  for(byte l=0; l<24; l++) {
+    if (bright_on == 0.00)
+      minute_array[l] = ((byte)(minute_show / 2.5) == l); //in total darkness, only one LED for minute
     else
-      second_array[l] = false;    
+      minute_array[l] = ((minute_show / 2.5) >= l);
+    if (SHOW_SECONDS)
+      second_array[l] = ((second_show / 2.5) >= l);
+    else
+      second_array[l] = false;
   }
   byte lr;
   for(byte l=0;l<12;l++){ //loop for hour ring
@@ -356,8 +357,8 @@ void time_show(byte rot, byte status_led){
     lr = l+(3*rot);
     if (lr>11) lr = lr-12;
     //LEDs array
-    uint8_t intensityR = 0;
-    uint8_t intensityG = (1+(uint16_t)(bright_on*128.0))*(uint16_t)hour_array[l];
+    uint8_t intensityR = (bright_on == 0.00) ? (uint8_t)hour_array[l] : 0; //in total darkness, tiny bit of red light
+    uint8_t intensityG = (0+(uint16_t)(bright_on*128.0))*(uint16_t)hour_array[l]; //when dark, if off (0 offset)
     uint8_t intensityB = 0;
     leds[lr+NUM_LEDS_M + SACRIFICIAL_LED].setRGB(intensityR,intensityG,intensityB);
   }
@@ -1058,7 +1059,35 @@ byte getOrientation(void)
   // about the orientation of the sensor. It will be either
   // PORTRAIT_U, PORTRAIT_D, LANDSCAPE_R, LANDSCAPE_L, or
   // LOCKOUT.
+  static byte last_pl = 255;
   byte pl = accel.readPL();
+  //Serial.print("PL: ");
+  //Serial.println(pl, HEX);
+  if (pl != last_pl) {
+    switch (pl) {
+      case PORTRAIT_U:
+      Serial.println("Orientation changed: PORTRAIT_U");
+      break;
+      case PORTRAIT_D:
+      Serial.println("Orientation changed: PORTRAIT_D");
+      break;
+      case LANDSCAPE_R:
+      Serial.println("Orientation changed: LANDSCAPE_R");
+      break;
+      case LANDSCAPE_L:
+      Serial.println("Orientation changed: LANDSCAPE_L");
+      break;
+      case LOCKOUT:
+      Serial.println("Orientation changed: LOCKOUT");
+      break;
+      default:
+      Serial.print("Orientation changed: Unknown (");
+      Serial.print(pl, HEX);
+      Serial.println(")");
+      break;
+    }
+    last_pl = pl;
+  }
   switch (pl)
   {
   case PORTRAIT_U:
