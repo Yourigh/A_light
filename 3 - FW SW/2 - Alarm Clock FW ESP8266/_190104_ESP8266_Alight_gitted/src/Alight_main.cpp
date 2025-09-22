@@ -29,10 +29,12 @@
   #include "WiFiUdp.h"
 #endif
 
-#define VERSION "V1.2"
+#define VERSION "V1.4"
 //V1.0 200205 added more delays to ext trigger
 //V1.1 added clock show yellow while in alarm shine mode
 //V1.2 added internet time NTP client, added summer time commands and menu on default webpage
+//V1.3 night mode edits, hour always only one LED on
+//V1.4 middle LED at night on a bit.
 
 // Define the array of leds
 CRGB leds[NUM_LEDS_M + NUM_LEDS_H + SACRIFICIAL_LED];
@@ -372,7 +374,14 @@ void time_show(byte rot, byte status_led){
     uint8_t intensityB = (0+(uint16_t)(bright_on*8.0))*(uint16_t)second_array[l];  //was 3+
     leds[lr+SACRIFICIAL_LED].setRGB(intensityR,intensityG,intensityB);
   }
-  leds[0].setRGB(255*((status_led&0b100)>>2),255*((status_led&0b010)>>1),255*(status_led&0b001));
+  if (bright_on == 0.00){
+    if (status_led==0)
+      leds[0].setRGB(0,1,0); //tiny bit of green in total darkness
+    else
+      leds[0].setRGB(1*((status_led&0b100)>>2),1*((status_led&0b010)>>1),1*(status_led&0b001));
+  } else {
+    leds[0].setRGB(255*((status_led&0b100)>>2),255*((status_led&0b010)>>1),255*(status_led&0b001));
+  }
   FastLED.show();
 }
 
