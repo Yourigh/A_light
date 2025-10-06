@@ -288,6 +288,12 @@ void setup() {
          LightValue = exp_moving_average(LightValue,analogRead(A0)); //calculate average range 0 to 1024
          //clock face orientation read
          clock_face_rotation = getOrientation();  //can be less often
+         uint8_t status_state = 0b000;
+         if (webtype) 
+          status_state = 0b100; //AP mode - red
+         if ((summer_mode == 0) && (WiFi.status() != WL_CONNECTED))
+          status_state = 0b110; //wifi lost - orange
+        
          if (webtype)
           time_show(clock_face_rotation,(byte)0b100); //red status LED when AP mode (lost WiFi connection)
          else
@@ -295,18 +301,25 @@ void setup() {
         
          //checking if WiFi connection is still active
          if ((summer_mode == 0) && (webtype == 0) && (WiFi.status() != WL_CONNECTED))  { //only for local Wifi Connection when in client mode
-            LED_blink_all(leds,1,CRGB::Orange);
             PRINTDEBUG("\nConnection lost, trying to reconnect");
             WiFi.disconnect(); //check if still connected, if lost or anything, disconnect
-            delay(1000);
-            WiFi.begin(esid.c_str(), epass.c_str()); //use DHCP, no IP address is set.
-            if (testWifi(leds) == OK_VAL) { //20 connected, 10 not connected     this takes about ten seconds
-              WiFi.mode(WIFI_STA);
-            } else { //ERROR_VAL
+            static uint32_t reconnect_try = 0;
+            static uint32_t last_reconnect_attempt = millis();
+            reconnect_try++;
+            if (reconnect_try > 5) { //try 5 times to reconnect
+              reconnect_try = 0;
               WifiList = scanWifi_list();
               setupAP(chip_id);
               webtype = 1; //web server on on AP
-              LED_blink_all(leds,10,CRGB::Red); //error red blink 10 times
+            }
+            if ((last_reconnect_attempt + 10000 + (reconnect_try*600000)) < millis()) { //try reconnect after 10 seconds + 10min per try, max 1h40min
+              WiFi.begin(esid.c_str(), epass.c_str()); //use DHCP, no IP address is set.
+              if (testWifi(leds) == OK_VAL) { //20 connected, 10 not connected     this takes about ten seconds
+                WiFi.mode(WIFI_STA);
+                webtype = 0; //0 local, 1 AP
+                reconnect_try = 0;
+              }
+              last_reconnect_attempt = millis();
             }
          }
       }//end every second
