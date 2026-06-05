@@ -1,10 +1,9 @@
 #include <ESP8266WiFi.h>
 #include "JR_FastLed_alarm_clock.h"
 #include "FastLED.h"
-#include <Time.h>
 #include <TimeLib.h>
 
-#include "i2s.h"
+#include <core_esp8266_i2s.h>
 #include "i2s_reg.h"
 #include "Wave_const.h"
 
@@ -210,8 +209,8 @@ String scanWifi_list(void){
   return st;
 }
 
-void setupAP(String chip_id) {
-  WiFi.mode(WIFI_AP);
+void setupAP(String chip_id, bool keep_station_enabled) {
+  WiFi.mode(keep_station_enabled ? WIFI_AP_STA : WIFI_AP);
   delay(100);
   String ssid = AP_SSID + chip_id;
   String password = AP_PASS;

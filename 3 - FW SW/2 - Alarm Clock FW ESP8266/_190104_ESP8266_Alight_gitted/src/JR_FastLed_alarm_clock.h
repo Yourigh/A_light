@@ -4,7 +4,7 @@
 #include <ESP8266WiFi.h>
 #include "FastLED.h"
 #include "Alight_web.h"
-#include "i2s.h"
+#include <core_esp8266_i2s.h>
 #include "i2s_reg.h"
 #include "Wave_const.h"
 
@@ -63,7 +63,7 @@ String special_char_fix(String input); //html fix for %HEXHEX special chars, use
 int testWifi(struct CRGB *leds); //tests WiFi
 
 String scanWifi_list(void); //scans Wifi Networks and returns HTTP string bullet point list
-void setupAP(String chip_id); //creates access point with AP_SSID + chip_id name and AP_PASS password
+void setupAP(String chip_id, bool keep_station_enabled = false); //creates access point with AP_SSID + chip_id name and AP_PASS password
 
 String buildHTTPResponse(String content);
 

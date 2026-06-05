@@ -4,7 +4,6 @@
 #include <EEPROM.h>
 #include <Ticker.h>
 #include <ESP8266httpUpdate.h>
-#include <Time.h>
 #include <TimeLib.h>
 #define FASTLED_ESP8266_RAW_PIN_ORDER
 #define FASTLED_ALLOW_INTERRUPTS 0 //to avoid flickering
@@ -22,7 +21,7 @@
 #include <Wire.h>
 #include "JR_FastLed_alarm_clock.h"
 #include <SparkFun_MMA8452Q.h> // Includes the SFE_MMA8452Q library
-#include "i2s.h"
+#include <core_esp8266_i2s.h>
 #include "i2s_reg.h"
 #ifdef NTP_TIME
   #include "NTPClient.h"
@@ -55,6 +54,16 @@ String req_name_buf[req_buffer_size];
 
 WiFiServer server(80);
 bool summer_mode = false;
+
+#define WIFI_RECONNECT_START_INTERVAL_MS 30000UL
+#define WIFI_RECONNECT_MAX_INTERVAL_MS 1800000UL
+#define WIFI_RECONNECT_TIMEOUT_MS 25000UL
+
+bool wifi_reconnect_in_progress = false;
+unsigned long wifi_reconnect_started_ms = 0;
+unsigned long wifi_next_reconnect_ms = 0;
+unsigned long wifi_reconnect_interval_ms = WIFI_RECONNECT_START_INTERVAL_MS;
+byte wifi_reconnect_failures = 0;
 
 TimeElements tm;
 unsigned long last_update_time;
@@ -99,6 +108,7 @@ void launchWeb(int webtype); //webtype 1 = AP host, 0 = guest
 void req_inter(String in); //split recevied string to command and value and put to global buffers
 void http_update_handle(String req);
 int mdns1(int webtype, String WifiList);//main web function that do everything. responds to requests etc..
+void wifi_reconnect_task(String esid, String epass, byte *webtype, String *WifiList);
 byte getOrientation(void);
 byte clock_face_rotation = 0;
 
@@ -228,7 +238,7 @@ void setup() {
       #endif
     } else {
       WifiList = scanWifi_list();
-      setupAP(chip_id);
+      setupAP(chip_id, true);
       webtype = 1; //web server on on AP
     }
   } else { //esid from EEPROM less than 2 chars..
@@ -291,22 +301,7 @@ void setup() {
          else
           time_show(clock_face_rotation,(byte)0b000); 
         
-         //checking if WiFi connection is still active
-         if ((summer_mode == 0) && (webtype == 0) && (WiFi.status() != WL_CONNECTED))  { //only for local Wifi Connection when in client mode
-            LED_blink_all(leds,1,CRGB::Orange);
-            PRINTDEBUG("\nConnection lost, trying to reconnect");
-            WiFi.disconnect(); //check if still connected, if lost or anything, disconnect
-            delay(1000);
-            WiFi.begin(esid.c_str(), epass.c_str()); //use DHCP, no IP address is set.
-            if (testWifi(leds) == OK_VAL) { //20 connected, 10 not connected     this takes about ten seconds
-              WiFi.mode(WIFI_STA);
-            } else { //ERROR_VAL
-              WifiList = scanWifi_list();
-              setupAP(chip_id);
-              webtype = 1; //web server on on AP
-              LED_blink_all(leds,10,CRGB::Red); //error red blink 10 times
-            }
-         }
+         wifi_reconnect_task(esid, epass, &webtype, &WifiList);
       }//end every second
     }
   }
@@ -469,6 +464,91 @@ void launchWeb(int webtype) {
   delay(100);
 }
 
+void wifi_reconnect_task(String esid, String epass, byte *webtype, String *WifiList) {
+  if (summer_mode || esid.length() <= 2) {
+    return;
+  }
+
+  if (WiFi.status() == WL_CONNECTED) {
+    if (wifi_reconnect_in_progress || wifi_reconnect_failures > 0 || *webtype == 1) {
+      PRINTDEBUG("\nWiFi reconnected, local IP: ");
+      PRINTDEBUG(WiFi.localIP());
+      LED_blink_all(leds,3,CRGB::Green);
+    }
+    wifi_reconnect_in_progress = false;
+    wifi_reconnect_failures = 0;
+    wifi_reconnect_interval_ms = WIFI_RECONNECT_START_INTERVAL_MS;
+    wifi_next_reconnect_ms = 0;
+    if (*webtype == 1) {
+      WiFi.softAPdisconnect(true);
+      WiFi.mode(WIFI_STA);
+      *webtype = 0;
+      #ifdef NTP_TIME
+        timeClient.begin();
+        timeClient.update();
+      #endif
+    }
+    return;
+  }
+
+  unsigned long now_ms = millis();
+  if (!wifi_reconnect_in_progress) {
+    if (wifi_next_reconnect_ms != 0 && (long)(now_ms - wifi_next_reconnect_ms) < 0) {
+      return;
+    }
+
+    PRINTDEBUG("\nWiFi disconnected, reconnect attempt ");
+    PRINTDEBUG(wifi_reconnect_failures + 1);
+    PRINTDEBUG(", interval ms: ");
+    PRINTDEBUG(wifi_reconnect_interval_ms);
+
+    WiFi.mode((*webtype == 1) ? WIFI_AP_STA : WIFI_STA);
+    WiFi.disconnect();
+    delay(50);
+    WiFi.begin(esid.c_str(), epass.c_str());
+    wifi_reconnect_started_ms = millis();
+    wifi_reconnect_in_progress = true;
+    LED_blink_all(leds,1,CRGB::Orange);
+    return;
+  }
+
+  wl_status_t status = WiFi.status();
+  if (status == WL_CONNECTED) {
+    return; //handled on the next pass so the success path stays in one place
+  }
+
+  bool failed_status = (status == WL_NO_SSID_AVAIL) || (status == WL_CONNECT_FAILED);
+  bool timed_out = (millis() - wifi_reconnect_started_ms) > WIFI_RECONNECT_TIMEOUT_MS;
+  if (!failed_status && !timed_out) {
+    return;
+  }
+
+  PRINTDEBUG("\nWiFi reconnect failed, status: ");
+  PRINTDEBUG(status);
+
+  WiFi.disconnect();
+  wifi_reconnect_in_progress = false;
+  wifi_reconnect_failures++;
+
+  if (*webtype == 0) {
+    *WifiList = scanWifi_list();
+    setupAP(chip_id, true);
+    *webtype = 1;
+  }
+
+  wifi_next_reconnect_ms = millis() + wifi_reconnect_interval_ms;
+  if (wifi_reconnect_interval_ms < 60000UL) {
+    wifi_reconnect_interval_ms = 60000UL;
+  } else if (wifi_reconnect_interval_ms < 300000UL) {
+    wifi_reconnect_interval_ms *= 2;
+  } else if (wifi_reconnect_interval_ms < WIFI_RECONNECT_MAX_INTERVAL_MS) {
+    wifi_reconnect_interval_ms *= 2;
+    if (wifi_reconnect_interval_ms > WIFI_RECONNECT_MAX_INTERVAL_MS) {
+      wifi_reconnect_interval_ms = WIFI_RECONNECT_MAX_INTERVAL_MS;
+    }
+  }
+}
+
 
 void req_inter(String in) //split recevied string to command and value and put to global buffers
 {
@@ -506,7 +586,8 @@ void http_update_handle(String req) {
   req_inter(req);
   PRINTDEBUG(req_name_buf[0]);
   PRINTDEBUG(req_value_buf[0]);
-  t_httpUpdate_return ret = ESPhttpUpdate.update(req_value_buf[0]);
+  WiFiClient updateClient;
+  t_httpUpdate_return ret = ESPhttpUpdate.update(updateClient, req_value_buf[0]);
   switch (ret) {
     case HTTP_UPDATE_FAILED:
       Serial.printf("HTTP_UPDATE_FAILD Error (%d): %s", ESPhttpUpdate.getLastError(), ESPhttpUpdate.getLastErrorString().c_str());
