@@ -43,7 +43,7 @@ void LED_loading_anim_timed(struct CRGB *leds){
 void LED_loading_anim(struct CRGB *leds, byte dot, byte strip_num) {
   #define TAIL_LEDS_H 4
   #define TAIL_LEDS_M 8
-  const byte max_bright[3] = {128,63,3};// {3,128,63};
+  const byte max_bright[3] = {60,30,1};// {3,128,63};
   byte dot_loopback = dot;
   byte tail_leds = (strip_num ? TAIL_LEDS_H : TAIL_LEDS_M);
   byte num_leds = (strip_num ? NUM_LEDS_H : NUM_LEDS_M);
@@ -147,7 +147,7 @@ int testWifi(struct CRGB *leds) { //20 - connected to local, 10 - not connected 
       WL_DISCONNECTED     = 6*/
     if (current_status == WL_CONNECTED) {
       PRINTDEBUG(current_status); 
-      LED_blink_all(leds,3,CRGB::Green);
+      LED_blink_all(leds,1,CRGB::Green);
       return OK_VAL;
     } else if ( (current_status==WL_NO_SSID_AVAIL)| //after while, when SSID that was saved in memory not found
                 (current_status==WL_IDLE_STATUS)  | //when no SSID is in memory
